@@ -1,0 +1,10 @@
+{
+  "name": "animatch",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/migrate.js"
+  },
+  "devDependencies": {
+    "pg": "8.13.1"
+  }
+}

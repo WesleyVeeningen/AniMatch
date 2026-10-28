@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AniMatch</title>
+<style>
+:root{
+  --bg:#0f0d15; --panel:#1b1826; --panel2:#262236; --text:#f4f1fa; --muted:#9a93ad;
+  --like:#2fe0a0; --nope:#ff4d6d; --super:#4db8ff; --a1:#ff5f8f; --a2:#ff9a4d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none !important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  overflow:hidden;display:flex;flex-direction:column;user-select:none;-webkit-user-select:none}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}
+.logo{font-weight:800;font-size:22px;letter-spacing:-.5px;
+  background:linear-gradient(90deg,var(--a1),var(--a2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.tabs{display:flex;gap:4px;background:var(--panel);padding:4px;border-radius:999px}
+.tabs button{border:0;background:none;color:var(--muted);font:600 13px inherit;font-family:inherit;padding:7px 14px;border-radius:999px;cursor:pointer}
+.tabs button.on{background:var(--panel2);color:var(--text)}
+.badge{display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:9px;background:var(--a1);color:#fff;font-size:11px;line-height:18px}
+main{flex:1;position:relative;min-height:0}
+.view{position:absolute;inset:0;display:none}
+.view.on{display:flex}
+
+/* swipe view */
+#swipe{flex-direction:column;align-items:center}
+#deck{position:relative;flex:1;width:min(92vw,400px);max-height:620px;margin-top:6px}
+.card{position:absolute;inset:0;border-radius:20px;overflow:hidden;background:var(--panel) center/cover;
+  box-shadow:0 10px 40px rgba(0,0,0,.5);touch-action:none;cursor:grab;will-change:transform}
+.card.behind{transform:scale(.95) translateY(14px);filter:brightness(.6);transition:transform .25s,filter .25s}
+.card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
+.card .shade{position:absolute;inset:0;background:linear-gradient(180deg,transparent 35%,rgba(10,8,16,.75) 62%,rgba(10,8,16,.97))}
+.card .info{position:absolute;left:0;right:0;bottom:0;padding:18px;transition:transform .25s}
+.card h2{font-size:24px;line-height:1.15;margin-bottom:6px;text-shadow:0 2px 10px rgba(0,0,0,.6)}
+.meta{color:#d8d2e6;font-size:13px;margin-bottom:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;padding:4px 9px;border-radius:999px;background:rgba(255,255,255,.12);backdrop-filter:blur(6px)}
+.chip.hot{background:rgba(255,95,143,.3);color:#ffd0de}
+.desc{font-size:13px;line-height:1.45;color:#cfc8de;margin-top:12px;max-height:0;overflow:hidden;transition:max-height .3s}
+.card.open .desc{max-height:200px;overflow:auto}
+.hint{font-size:11px;color:var(--muted);margin-top:10px}
+.match{display:inline-block;font-weight:700;font-size:12px;padding:4px 10px;border-radius:999px;margin-bottom:8px;
+  background:linear-gradient(90deg,var(--a1),var(--a2))}
+.stamp{position:absolute;top:28px;font:900 34px/1 system-ui;padding:6px 12px;border:4px solid;border-radius:10px;opacity:0;letter-spacing:2px}
+.stamp.like{left:22px;color:var(--like);transform:rotate(-15deg)}
+.stamp.nope{right:22px;color:var(--nope);transform:rotate(15deg)}
+.stamp.super{left:50%;top:auto;bottom:45%;color:var(--super);transform:translateX(-50%) rotate(-8deg)}
+.controls{display:flex;gap:18px;align-items:center;padding:16px 0 22px}
+.btn{width:62px;height:62px;border-radius:50%;border:0;background:var(--panel);cursor:pointer;font-size:26px;
+  display:grid;place-items:center;box-shadow:0 4px 18px rgba(0,0,0,.4);transition:transform .12s}
+.btn:active{transform:scale(.9)}
+.btn.sm{width:46px;height:46px;font-size:19px}
+.btn.nope{color:var(--nope)} .btn.like{color:var(--like)} .btn.super{color:var(--super)} .btn.undo{color:#f5c84b}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);padding:30px}
+.spinner{width:36px;height:36px;border:3px solid var(--panel2);border-top-color:var(--a1);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* matches view */
+#matches{flex-direction:column;overflow:auto;padding:4px 16px 30px}
+#matches h3{font-size:15px;color:var(--muted);font-weight:600;margin:14px 0 10px}
+.prefs{display:flex;flex-wrap:wrap;gap:6px}
+.prefs .chip.neg{background:rgba(255,77,109,.18);color:#ffb3c1}
+.list{display:grid;gap:10px;width:100%;max-width:640px}
+.row{display:flex;gap:12px;background:var(--panel);border-radius:14px;padding:10px;text-decoration:none;color:inherit;align-items:center}
+.row img{width:64px;height:90px;object-fit:cover;border-radius:8px;flex:none;background:var(--panel2)}
+.row .t{font-weight:700;font-size:15px;margin-bottom:3px}
+.row .s{font-size:12px;color:var(--muted)}
+.row .why{font-size:12px;color:#ffc1d3;margin-top:5px}
+.row .pct{margin-left:auto;font-weight:800;font-size:18px;color:var(--a1);flex:none;padding-left:6px}
+.rank{font-weight:800;color:var(--muted);width:22px;flex:none;text-align:center}
+.mini{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.mini img{width:58px;height:82px;border-radius:8px;object-fit:cover;flex:none}
+.reset{margin-top:24px;align-self:flex-start;background:none;border:1px solid var(--panel2);color:var(--muted);padding:8px 14px;border-radius:10px;cursor:pointer;font-family:inherit}
+
+/* match modal */
+#modal{position:fixed;inset:0;background:rgba(10,6,18,.88);backdrop-filter:blur(8px);display:none;
+  flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;z-index:10}
+#modal.on{display:flex;animation:pop .35s ease-out}
+@keyframes pop{from{opacity:0;transform:scale(1.08)}}
+#modal .big{font:900 italic 44px/1 system-ui;background:linear-gradient(90deg,var(--a1),var(--a2));
+  -webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:6px}
+#modal img{width:180px;height:256px;object-fit:cover;border-radius:16px;margin:18px 0;box-shadow:0 0 0 4px var(--a1),0 0 60px rgba(255,95,143,.5)}
+#modal .mt{font-size:20px;font-weight:700}
+#modal .mw{color:var(--muted);font-size:13px;margin:6px 0 20px;max-width:340px}
+#modal .acts{display:flex;gap:10px}
+#modal a,#modal button{padding:12px 20px;border-radius:999px;border:0;font:700 14px system-ui;cursor:pointer;text-decoration:none}
+#modal a{background:linear-gradient(90deg,var(--a1),var(--a2));color:#fff}
+#modal button{background:var(--panel2);color:var(--text)}
+
+/* account */
+.right{display:flex;align-items:center;gap:8px}
+#acct{width:34px;height:34px;border-radius:50%;border:0;cursor:pointer;font:700 14px system-ui;color:#fff;
+  background:var(--panel2);display:grid;place-items:center}
+#acct.in{background:linear-gradient(135deg,var(--a1),var(--a2))}
+#auth{position:fixed;inset:0;background:rgba(10,6,18,.88);backdrop-filter:blur(8px);display:none;
+  align-items:center;justify-content:center;padding:16px;z-index:11}
+#auth.on{display:flex;animation:pop .25s ease-out}
+#auth .box{width:100%;max-width:360px;background:var(--panel);border-radius:20px;padding:24px;user-select:text;-webkit-user-select:text}
+#auth .box,#auth form{display:grid;gap:12px}
+#auth h2{font-size:22px}
+#auth p{color:var(--muted);font-size:14px;line-height:1.4}
+#auth input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--panel2);background:var(--bg);color:var(--text);font:15px system-ui}
+#auth input:focus{outline:2px solid var(--a1);border-color:transparent}
+#auth .go{padding:12px;border:0;border-radius:999px;font:700 15px system-ui;color:#fff;cursor:pointer;
+  background:linear-gradient(90deg,var(--a1),var(--a2))}
+#auth .go:disabled{opacity:.6;cursor:wait}
+#auth .alt{background:var(--panel2)}
+#auth .link{background:none;border:0;color:var(--muted);font:13px system-ui;cursor:pointer;text-decoration:underline}
+#auth .msg{font-size:13px;min-height:1em}
+#auth .msg.err{color:var(--nope)} #auth .msg.ok{color:var(--like)}
+#auth .seg{display:flex;gap:6px} #auth .seg button{flex:1;padding:9px;border-radius:10px;border:1px solid var(--panel2);
+  background:none;color:var(--muted);font:600 14px system-ui;cursor:pointer}
+#auth .seg button.on{background:var(--panel2);color:var(--text)}
+
+/* import + party */
+.card-box{background:var(--panel);border-radius:16px;padding:16px;display:grid;gap:10px;max-width:640px;width:100%}
+.card-box p{color:var(--muted);font-size:14px;line-height:1.4}
+.btn2{padding:11px 16px;border:0;border-radius:999px;font:700 14px system-ui;color:#fff;cursor:pointer;
+  background:linear-gradient(90deg,var(--a1),var(--a2));justify-self:start}
+.btn2.alt{background:var(--panel2)}
+.field{width:100%;padding:11px 13px;border-radius:12px;border:1px solid var(--panel2);background:var(--bg);color:var(--text);font:15px system-ui}
+.field:focus{outline:2px solid var(--a1);border-color:transparent}
+.fr{display:flex;gap:8px;flex-wrap:wrap} .fr .field{flex:1;min-width:130px}
+.err{color:var(--nope);font-size:13px} .ok{color:var(--like);font-size:13px}
+#party{flex-direction:column;align-items:center;overflow:auto;padding:4px 16px 30px;gap:14px}
+#party h3{font-size:15px;color:var(--muted);font-weight:600;width:100%;max-width:640px;margin-bottom:-4px}
+#party .list{justify-self:center}
+.pcode{font:900 40px/1 ui-monospace,Menlo,monospace;letter-spacing:6px;background:linear-gradient(90deg,var(--a1),var(--a2));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.member{display:flex;align-items:center;gap:10px;font-size:14px}
+.member .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--panel2)}
+.member .bar{flex:1;height:6px;border-radius:3px;background:var(--panel2);overflow:hidden}
+.member .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--a1),var(--a2))}
+.member small{color:var(--muted);min-width:48px;text-align:right}
+#partyBar{border:0;cursor:pointer;margin-top:2px;padding:6px 14px;border-radius:999px;font:600 13px system-ui;color:#fff;
+  background:linear-gradient(90deg,rgba(255,95,143,.35),rgba(255,154,77,.35))}
+.tabs button{white-space:nowrap}
+@media (max-width:420px){ .logo{font-size:17px} .tabs button{padding:7px 8px} .badge{margin-left:2px} header{padding:12px 10px 6px} }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="logo">AniMatch</div>
+  <div class="right">
+    <div class="tabs">
+      <button data-v="swipe" class="on">Swipe</button>
+      <button data-v="matches">Matches<span class="badge" id="badge" hidden></span></button>
+      <button data-v="party">Party<span class="badge" id="pbadge" hidden></span></button>
+    </div>
+    <button id="acct" title="Account" hidden>👤</button>
+  </div>
+</header>
+<main>
+  <section class="view on" id="swipe">
+    <button id="partyBar" hidden></button>
+    <div id="deck"><div class="empty"><div><div class="spinner"></div>Fetching anime from AniList…</div></div></div>
+    <div class="controls">
+      <button class="btn sm undo" id="bUndo" title="Undo (Backspace)">↺</button>
+      <button class="btn nope" id="bNope" title="Nope (←)">✕</button>
+      <button class="btn sm super" id="bSuper" title="Super like (↑)">★</button>
+      <button class="btn like" id="bLike" title="Like (→)">♥</button>
+    </div>
+  </section>
+  <section class="view" id="matches"></section>
+  <section class="view" id="party"></section>
+</main>
+<div id="modal"></div>
+<div id="auth"><div class="box"></div></div>
+
+<script>
+const API = 'https://graphql.anilist.co';
+const FIELDS = `id idMal title{romaji english} coverImage{extraLarge color} genres
+  tags{name rank isMediaSpoiler isAdult} averageScore popularity seasonYear format episodes
+  description(asHtml:false) siteUrl relations{edges{relationType(version:2) node{type format popularity}}}`;
+const LIGHT = `id idMal title{romaji english} coverImage{extraLarge} genres tags{name rank isMediaSpoiler isAdult}`;
+const QUERY = `query($page:Int){Page(page:$page,perPage:50){pageInfo{hasNextPage}
+  media(type:ANIME,sort:POPULARITY_DESC,isAdult:false){${FIELDS}}}}`;
+const BY_ID = `query($ids:[Int]){Page(perPage:50){media(id_in:$ids,type:ANIME){${FIELDS}}}}`;
+const BY_MAL = `query($ids:[Int]){Page(perPage:50){media(idMal_in:$ids,type:ANIME){${LIGHT}}}}`;
+const LIST = `query($u:String){MediaListCollection(userName:$u,type:ANIME){lists{entries{
+  status score(format:POINT_100) media{${LIGHT}}}}}}`;
+// 'seen' = imported from a list as watched but rated middling
+const WEIGHT = {like: 1, super: 2, nope: -0.7, seen: 0.2};
+const isLike = a => a === 'like' || a === 'super';
+const MAX_PAGES = 30;            // up to 1,500 of the most popular titles
+const STORE = 'animatch-v1';
+
+const pool = new Map();          // id -> anime
+let history = [];                // [{id, a, f, t, c}]
+let deck = [];                   // ids, deck[0] is the top card
+let page = 0, hasNext = true, fetching = false;
+let likesSinceMatch = 0, shownMatches = new Set();
+let sb = null, user = null;      // Supabase client + signed-in user (null = guest)
+
+/* ---------- persistence ---------- */
+// Guests keep swipes in this browser; signed-in users keep them in Supabase.
+function save() {
+  try {
+    localStorage.setItem(STORE + ':shown', JSON.stringify([...shownMatches]));
+    if (!user) localStorage.setItem(STORE, JSON.stringify(history));
+  } catch {}
+}
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(STORE));
+    history = Array.isArray(d) ? d : (d?.history || []);
+  } catch { history = []; }
+  try { shownMatches = new Set(JSON.parse(localStorage.getItem(STORE + ':shown')) || []); } catch {}
+}
+const row = h => ({user_id: user.id, anime_id: h.id, action: h.a, feats: h.f, title: h.t, cover: h.c});
+function cloud(op) {
+  if (!user || !sb) return;
+  op(sb.from('swipes')).then(({error}) => error && console.error(error));
+}
+
+/* ---------- data ---------- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function gql(query, variables) {
+  for (let tries = 0; ; tries++) {
+    const res = await fetch(API, {method: 'POST', headers: {'Content-Type': 'application/json', Accept: 'application/json'},
+      body: JSON.stringify({query, variables})});
+    if (res.status === 429 && tries < 4) { // rate limited: back off and retry
+      await sleep((+res.headers.get('Retry-After') || 10) * 1000); continue;
+    }
+    const json = await res.json();
+    if (json.errors?.length) throw new Error(json.errors[0].message);
+    return json.data;
+  }
+}
+// A sequel has a TV prequel, or a prequel that's more popular than itself.
+// (Popular shows often have a minor OVA/movie "prequel" — those stay in the deck.)
+const isSequel = m => (m.relations?.edges || []).some(e => e.relationType === 'PREQUEL' && e.node.type === 'ANIME' &&
+  (e.node.format === 'TV' || e.node.format === 'TV_SHORT' || e.node.popularity > m.popularity));
+function addToPool(m) { m.f = features(m); m.sequel = isSequel(m); pool.set(m.id, m); }
+async function loadIds(ids) {
+  const missing = ids.filter(id => !pool.has(id));
+  for (let i = 0; i < missing.length; i += 50) (await gql(BY_ID, {ids: missing.slice(i, i + 50)})).Page.media.forEach(addToPool);
+}
+
+async function fetchPage() {
+  if (fetching || !hasNext || page >= MAX_PAGES) return;
+  fetching = true;
+  try {
+    const p = (await gql(QUERY, {page: page + 1})).Page;
+    page++; hasNext = p.pageInfo.hasNextPage;
+    p.media.forEach(addToPool);
+  } catch (e) {
+    console.error(e);
+    fetching = false;
+    if (!pool.size) showError();
+    return;
+  }
+  fetching = false;
+}
+async function ensurePool() {
+  if (unseen().length < 120 && hasNext && page < MAX_PAGES) {
+    await fetchPage();
+    setTimeout(ensurePool, 800); // keep filling quietly in the background
+  }
+}
+
+function features(m) {
+  const f = {};
+  for (const g of m.genres) f['g:' + g] = 1;
+  for (const t of m.tags) if (!t.isMediaSpoiler && !t.isAdult && t.rank >= 55) f['t:' + t.name] = 0.7 * t.rank / 100;
+  return f;
+}
+
+/* ---------- recommendation engine ---------- */
+const seen = () => new Set(history.map(h => h.id));
+const unseen = () => { const s = seen(); return [...pool.values()].filter(m => !m.sequel && !s.has(m.id)); };
+
+function prefs() {
+  const p = {};
+  for (const h of history) for (const k in h.f) p[k] = (p[k] || 0) + WEIGHT[h.a] * h.f[k];
+  const n = Math.max(1, history.length);
+  for (const k in p) p[k] /= n;
+  return p;
+}
+function score(m, p) {
+  let dot = 0, norm = 0;
+  for (const k in m.f) { dot += (p[k] || 0) * m.f[k]; norm += m.f[k] ** 2; }
+  const quality = ((m.averageScore || 65) - 70) / 30;
+  return dot / Math.sqrt(norm || 1) + 0.08 * quality;
+}
+const pct = s => Math.max(1, Math.min(99, Math.round(50 + 50 * Math.tanh(s * 1.6))));
+function why(m, p) {
+  return Object.keys(m.f).map(k => [k, (p[k] || 0) * m.f[k]]).filter(x => x[1] > 0)
+    .sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0].slice(2));
+}
+function ranked() {
+  const p = prefs();
+  return unseen().map(m => ({m, s: score(m, p)})).sort((a, b) => b.s - a.s);
+}
+
+function pickNext() {
+  if (party) { // party mode: everyone swipes the same deck, in the same order
+    const mine = partyMine();
+    return party.deck.find(id => pool.has(id) && !mine.has(id) && !deck.includes(id)) ?? null;
+  }
+  const inDeck = new Set(deck);
+  const cands = unseen().filter(m => !inDeck.has(m.id));
+  if (!cands.length) return null;
+  // early on, or ~25% of the time, explore popular titles so the model learns more
+  if (history.length < 6 || Math.random() < 0.25) {
+    const popular = cands.slice(0, 80);
+    return popular[Math.floor(Math.random() * popular.length)].id;
+  }
+  const p = prefs();
+  const top = cands.map(m => ({id: m.id, s: score(m, p) + Math.random() * 0.15}))
+    .sort((a, b) => b.s - a.s).slice(0, 6);
+  return top[Math.floor(Math.random() * top.length)].id;
+}
+function fillDeck() {
+  while (deck.length < 3) { const id = pickNext(); if (id == null) break; deck.push(id); }
+}
+
+/* ---------- rendering ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const title = m => m.title.english || m.title.romaji;
+const clean = d => (d || 'No synopsis available.').replace(/<[^>]+>/g, '').replace(/\(Source:.*?\)/gi, '').trim();
+const fmt = f => ({TV:'TV', TV_SHORT:'TV Short', MOVIE:'Movie', SPECIAL:'Special', OVA:'OVA', ONA:'ONA', MUSIC:'Music'}[f] || f || '');
+
+function cardHTML(m, p) {
+  const reasons = new Set(history.length >= 3 ? why(m, p) : []);
+  const meta = [m.seasonYear, fmt(m.format), m.episodes && (m.episodes + (m.episodes > 1 ? ' eps' : ' ep')),
+    m.averageScore && ('★ ' + (m.averageScore / 10).toFixed(1))].filter(Boolean).join(' · ');
+  return `<img src="${esc(m.coverImage.extraLarge)}" alt="" draggable="false">
+    <div class="shade"></div>
+    <div class="stamp like">LIKE</div><div class="stamp nope">NOPE</div><div class="stamp super">SUPER</div>
+    <div class="info">
+      ${history.length >= 3 ? `<div class="match">${pct(score(m, p))}% match</div>` : ''}
+      <h2>${esc(title(m))}</h2>
+      <div class="meta">${esc(meta)}</div>
+      <div class="chips">${m.genres.map(g => `<span class="chip${reasons.has(g) ? ' hot' : ''}">${esc(g)}</span>`).join('')}</div>
+      <p class="desc">${esc(clean(m.description))}</p>
+      <div class="hint">Tap card for synopsis</div>
+    </div>`;
+}
+
+const deckEl = document.getElementById('deck');
+function renderDeck() {
+  fillDeck();
+  deckEl.innerHTML = '';
+  renderPartyBar();
+  if (!deck.length && party) {
+    deckEl.innerHTML = party.deck.every(id => pool.has(id))
+      ? `<div class="empty"><div>You've swiped the whole party deck! 🎉<br>Matches appear when everyone's done.<br><br>
+         <button class="btn2" onclick="switchView('party')">See the party</button></div></div>`
+      : '<div class="empty"><div><div class="spinner"></div>Loading the party deck…</div></div>';
+    return;
+  }
+  if (!deck.length) {
+    deckEl.innerHTML = fetching || hasNext
+      ? '<div class="empty"><div><div class="spinner"></div>Loading more anime…</div></div>'
+      : '<div class="empty"><div>You swiped through everything! 🎉<br>Check your Matches.</div></div>';
+    if (fetching || hasNext) setTimeout(() => { ensurePool(); renderDeck(); }, 1500);
+    return;
+  }
+  const p = prefs();
+  deck.slice(0, 2).reverse().forEach((id, i, arr) => {
+    const el = document.createElement('div');
+    el.className = 'card' + (i < arr.length - 1 ? ' behind' : '');
+    el.innerHTML = cardHTML(pool.get(id), p);
+    deckEl.appendChild(el);
+  });
+  // preload the next cover
+  if (deck[2]) new Image().src = pool.get(deck[2]).coverImage.extraLarge;
+  attachDrag(deckEl.lastElementChild);
+}
+
+/* ---------- swiping ---------- */
+let busy = false;
+function attachDrag(card) {
+  let sx, sy, dx = 0, dy = 0, dragging = false;
+  const stamps = {like: card.querySelector('.stamp.like'), nope: card.querySelector('.stamp.nope'), super: card.querySelector('.stamp.super')};
+  card.addEventListener('pointerdown', e => {
+    if (busy) return;
+    dragging = true; sx = e.clientX; sy = e.clientY; dx = dy = 0;
+    card.setPointerCapture(e.pointerId); card.style.transition = 'none'; card.style.cursor = 'grabbing';
+  });
+  card.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    dx = e.clientX - sx; dy = e.clientY - sy;
+    card.style.transform = `translate(${dx}px,${dy}px) rotate(${dx / 14}deg)`;
+    stamps.like.style.opacity = Math.max(0, dx / 100);
+    stamps.nope.style.opacity = Math.max(0, -dx / 100);
+    stamps.super.style.opacity = Math.max(0, (-dy - Math.abs(dx)) / 100);
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false; card.style.cursor = '';
+    if (Math.abs(dx) < 6 && Math.abs(dy) < 6) { card.classList.toggle('open'); reset(); return; }
+    if (-dy > 120 && -dy > Math.abs(dx)) return swipe('super', dx, dy);
+    if (dx > 110) return swipe('like', dx, dy);
+    if (dx < -110) return swipe('nope', dx, dy);
+    reset();
+  };
+  const reset = () => {
+    card.style.transition = 'transform .3s cubic-bezier(.2,.9,.3,1.3)'; card.style.transform = '';
+    for (const s of Object.values(stamps)) s.style.opacity = 0;
+  };
+  card.addEventListener('pointerup', end);
+  card.addEventListener('pointercancel', end);
+}
+
+function swipe(action, dx = 0, dy = 0) {
+  const card = deckEl.lastElementChild;
+  if (busy || !deck.length || !card?.classList.contains('card')) return;
+  busy = true;
+  const m = pool.get(deck[0]);
+  card.querySelector('.stamp.' + action).style.opacity = 1;
+  const tx = action === 'super' ? dx : (action === 'like' ? 1 : -1) * innerWidth * 1.2;
+  const ty = action === 'super' ? -innerHeight * 1.2 : dy + 60;
+  card.style.transition = 'transform .38s ease-in';
+  card.style.transform = `translate(${tx}px,${ty}px) rotate(${(action === 'nope' ? -1 : 1) * 25}deg)`;
+  const behind = deckEl.querySelector('.card.behind');
+  if (behind) behind.classList.remove('behind');
+
+  if (party) { // party swipes are shared with the group and kept out of your personal history
+    deck.shift();
+    partySwipe(m.id, action);
+    setTimeout(() => { busy = false; renderDeck(); }, 330);
+    return;
+  }
+  const h = {id: m.id, a: action, f: m.f, t: title(m), c: m.coverImage.extraLarge};
+  history.push(h);
+  cloud(t => t.upsert(row(h), {onConflict: 'user_id,anime_id'}));
+  deck.shift();
+  deck = deck.slice(0, 1); // re-pick cards behind the next one with the updated preferences
+  if (isLike(action)) likesSinceMatch++;
+  save();
+  ensurePool();
+  setTimeout(() => {
+    busy = false;
+    renderDeck(); updateBadge();
+    if (likesSinceMatch >= 5) { likesSinceMatch = 0; showMatch(); }
+  }, 330);
+}
+
+function undo() {
+  if (busy || party || !history.length) return;
+  const h = history.pop();
+  cloud(t => t.delete().eq('user_id', user.id).eq('anime_id', h.id));
+  if (!pool.has(h.id)) { save(); return; }
+  deck.unshift(h.id); deck = deck.slice(0, 2);
+  if (isLike(h.a)) likesSinceMatch = Math.max(0, likesSinceMatch - 1);
+  save(); renderDeck(); updateBadge();
+}
+
+document.getElementById('bLike').onclick = () => swipe('like');
+document.getElementById('bNope').onclick = () => swipe('nope');
+document.getElementById('bSuper').onclick = () => swipe('super');
+document.getElementById('bUndo').onclick = undo;
+addEventListener('keydown', e => {
+  if (authEl.classList.contains('on')) { if (e.key === 'Escape') closeAuth(); return; }
+  if (modal.classList.contains('on')) { if (e.key === 'Escape' || e.key === 'Enter') closeModal(); return; }
+  if (!document.getElementById('swipe').classList.contains('on') || e.target.closest?.('input')) return;
+  if (e.key === 'ArrowRight') swipe('like');
+  else if (e.key === 'ArrowLeft') swipe('nope');
+  else if (e.key === 'ArrowUp') { e.preventDefault(); swipe('super'); }
+  else if (e.key === 'Backspace') undo();
+  else if (e.key === ' ') { e.preventDefault(); deckEl.lastElementChild?.classList.toggle('open'); }
+});
+
+/* ---------- match modal ---------- */
+const modal = document.getElementById('modal');
+function showMatch() {
+  const p = prefs();
+  const best = ranked().find(r => !shownMatches.has(r.m.id) && !deck.includes(r.m.id));
+  if (!best) return;
+  const m = best.m;
+  shownMatches.add(m.id); save();
+  const reasons = why(m, p);
+  matchModal(m, `Based on your ${history.filter(h => isLike(h.a)).length} likes, you'd love…`,
+    `${pct(best.s)}% match${reasons.length ? ' · you like ' + reasons.join(', ') : ''}`);
+}
+function matchModal(m, lead, detail) {
+  modal.innerHTML = `<div class="big">It's a Match!</div>
+    <div style="color:var(--muted)">${esc(lead)}</div>
+    <img src="${esc(m.coverImage.extraLarge)}" alt="">
+    <div class="mt">${esc(title(m))}</div>
+    <div class="mw">${esc(detail)}</div>
+    <div class="acts"><a href="${esc(m.siteUrl)}" target="_blank" rel="noopener">View on AniList</a>
+    <button id="keep">Keep swiping</button></div>`;
+  modal.classList.add('on');
+  document.getElementById('keep').onclick = closeModal;
+}
+function closeModal() { modal.classList.remove('on'); }
+modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+
+/* ---------- matches view ---------- */
+const matchesEl = document.getElementById('matches');
+function renderMatches() {
+  const liked = history.filter(h => isLike(h.a));
+  const importBox = `<div class="card-box" style="margin-top:12px"><b>Skip the warm-up</b>
+    <p>Import your AniList or MyAnimeList list: shows you rated highly count as likes, low scores and drops as passes,
+    and everything you've watched leaves your deck.</p>
+    <button class="btn2" onclick="openImport()">Import my list</button></div>`;
+  if (liked.length < 3) {
+    matchesEl.innerHTML = `${importBox}<div class="card-box" style="margin-top:12px;text-align:center">
+      <p>Like at least 3 anime to unlock matches. (${liked.length}/3 so far)</p></div>`;
+    return;
+  }
+  const p = prefs();
+  const prefList = Object.entries(p).sort((a, b) => b[1] - a[1]);
+  const loves = prefList.filter(x => x[1] > 0).slice(0, 8);
+  const hates = prefList.filter(x => x[1] < 0).slice(-5).reverse();
+  const top = ranked().slice(0, 25);
+  matchesEl.innerHTML = `
+    <h3>Your taste</h3>
+    <div class="prefs">${loves.map(x => `<span class="chip hot">♥ ${esc(x[0].slice(2))}</span>`).join('')}
+      ${hates.map(x => `<span class="chip neg">✕ ${esc(x[0].slice(2))}</span>`).join('')}</div>
+    <h3>Best matches for you</h3>
+    <div class="list">${top.map((r, i) => {
+      const m = r.m, w = why(m, p);
+      return `<a class="row" href="${esc(m.siteUrl)}" target="_blank" rel="noopener">
+        <div class="rank">${i + 1}</div>
+        <img src="${esc(m.coverImage.extraLarge)}" alt="" loading="lazy">
+        <div><div class="t">${esc(title(m))}</div>
+          <div class="s">${esc([m.seasonYear, fmt(m.format), m.genres.slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</div>
+          ${w.length ? `<div class="why">Because you like ${esc(w.join(', '))}</div>` : ''}</div>
+        <div class="pct">${pct(r.s)}%</div></a>`;
+    }).join('')}</div>
+    <h3>You liked (${liked.length})</h3>
+    <div class="mini">${liked.slice().reverse().map(h => `<img src="${esc(h.c)}" title="${esc(h.t)}" alt="">`).join('')}</div>
+    ${importBox}
+    <button class="reset" id="reset">Reset all swipes</button>`;
+  document.getElementById('reset').onclick = () => {
+    if (!confirm('Clear all your swipes and start over?')) return;
+    cloud(t => t.delete().eq('user_id', user.id));
+    history = []; deck = []; shownMatches = new Set(); likesSinceMatch = 0; save();
+    switchView('swipe'); renderDeck(); updateBadge();
+  };
+}
+function updateBadge() {
+  const b = document.getElementById('badge');
+  const n = history.filter(h => isLike(h.a)).length;
+  b.hidden = n < 3; b.textContent = n;
+}
+
+/* ---------- tabs ---------- */
+function switchView(v) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  document.querySelectorAll('.view').forEach(s => s.classList.toggle('on', s.id === v));
+  if (v === 'matches') renderMatches();
+  if (v === 'party') renderParty();
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => switchView(b.dataset.v));
+
+function showError() {
+  deckEl.innerHTML = `<div class="empty"><div>Couldn't reach AniList.<br>
+    <button class="reset" onclick="location.reload()">Try again</button></div></div>`;
+}
+
+/* ---------- accounts (Supabase) ---------- */
+const authEl = document.getElementById('auth'), authBox = authEl.querySelector('.box');
+const acctBtn = document.getElementById('acct');
+let authMode = 'signup';
+
+async function initAuth() {
+  try {
+    const cfg = await (await fetch('/api/config')).json();
+    if (!cfg.url || !cfg.key || !window.supabase) return;
+    sb = supabase.createClient(cfg.url, cfg.key);
+  } catch { return; } // no backend (e.g. plain local server): guest mode only
+  acctBtn.hidden = false;
+  // a failed email-confirmation link lands here with the error in the URL hash
+  const linkErr = new URLSearchParams(location.hash.slice(1)).get('error_description');
+  if (linkErr) {
+    history_replace();
+    authMode = 'login'; openAuth();
+    const msg = authBox.querySelector('.msg');
+    msg.className = 'msg err'; msg.textContent = linkErr + ' — try logging in, or sign up again for a new link.';
+  }
+  const {data: {session}} = await sb.auth.getSession();
+  await setUser(session?.user || null);
+  sb.auth.onAuthStateChange((_e, s) => {
+    // defer: Supabase calls made inside this callback can deadlock
+    if ((s?.user?.id || null) !== (user?.id || null)) setTimeout(() => setUser(s?.user || null));
+  });
+}
+
+// `history` is the swipe list here, so reach the browser History API explicitly
+function history_replace() { window.history.replaceState(null, '', location.pathname); }
+
+async function setUser(u) {
+  user = u;
+  acctBtn.classList.toggle('in', !!u);
+  acctBtn.textContent = u ? u.email[0].toUpperCase() : '👤';
+  if (u) {
+    // carry over anything swiped as a guest, then load the account's swipes
+    if (history.length) {
+      const {error} = await sb.from('swipes').upsert(history.map(row), {onConflict: 'user_id,anime_id'});
+      if (!error) try { localStorage.removeItem(STORE); } catch {}
+    }
+    const {data, error} = await sb.from('swipes').select('anime_id,action,feats,title,cover').order('seq');
+    if (!error) history = data.map(r => ({id: r.anime_id, a: r.action, f: r.feats, t: r.title, c: r.cover}));
+  } else {
+    load();
+  }
+  deck = []; likesSinceMatch = 0;
+  if (pool.size) renderDeck();
+  updateBadge();
+  if (matchesEl.classList.contains('on')) renderMatches();
+}
+
+function openAuth() {
+  if (user) {
+    authBox.innerHTML = `<h2>Your account</h2><p>Signed in as <b>${esc(user.email)}</b>.<br>
+      Your ${history.length} swipes are saved to the cloud.</p>
+      <button class="go alt" id="logout">Log out</button><button class="link" id="close">Close</button>`;
+    authBox.querySelector('#logout').onclick = async () => { await sb.auth.signOut(); closeAuth(); };
+    authBox.querySelector('#close').onclick = closeAuth;
+  } else {
+    const up = authMode === 'signup';
+    authBox.innerHTML = `<form><h2>${up ? 'Create your account' : 'Welcome back'}</h2>
+      <p>${up ? 'Save your swipes and matches and pick up on any device.' : 'Log in to get your swipes and matches back.'}</p>
+      <input name="email" type="email" required placeholder="Email" autocomplete="email">
+      <input name="pw" type="password" required minlength="6" placeholder="Password (6+ characters)"
+        autocomplete="${up ? 'new-password' : 'current-password'}">
+      <button class="go" type="submit">${up ? 'Sign up' : 'Log in'}</button>
+      <div class="msg"></div>
+      <button class="link" type="button" id="switch">${up ? 'Already have an account? Log in' : 'New here? Create an account'}</button>
+      <button class="link" type="button" id="close">Keep swiping as guest</button></form>`;
+    const form = authBox.querySelector('form'), msg = authBox.querySelector('.msg');
+    authBox.querySelector('#switch').onclick = () => { authMode = up ? 'login' : 'signup'; openAuth(); };
+    authBox.querySelector('#close').onclick = closeAuth;
+    form.onsubmit = async e => {
+      e.preventDefault();
+      const btn = form.querySelector('.go'), email = form.email.value.trim(), password = form.pw.value;
+      btn.disabled = true; msg.className = 'msg'; msg.textContent = '';
+      const {data, error} = up
+        ? await sb.auth.signUp({email, password, options: {emailRedirectTo: location.origin}})
+        : await sb.auth.signInWithPassword({email, password});
+      btn.disabled = false;
+      if (error) { msg.className = 'msg err'; msg.textContent = error.message; return; }
+      if (up && !data.session) { msg.className = 'msg ok'; msg.textContent = 'Check your inbox to confirm your email, then log in.'; return; }
+      closeAuth();
+    };
+    setTimeout(() => form.email.focus(), 50);
+  }
+  authEl.classList.add('on');
+}
+function closeAuth() { authEl.classList.remove('on'); }
+acctBtn.onclick = openAuth;
+authEl.addEventListener('click', e => { if (e.target === authEl) closeAuth(); });
+
+/* ---------- import from AniList / MyAnimeList ---------- */
+let importSrc = 'anilist';
+const MAL_STATUS = {1: 'CURRENT', 2: 'COMPLETED', 3: 'PAUSED', 4: 'DROPPED', 6: 'PLANNING'};
+
+// score is 0-100 (0 = unscored)
+function toAction(score, status) {
+  if (status === 'PLANNING') return null; // keep plan-to-watch shows recommendable
+  if (status === 'DROPPED') return 'nope';
+  if (score >= 85) return 'super';
+  if (score >= 65) return 'like';
+  if (score > 0 && score < 50) return 'nope';
+  if (score > 0 || status === 'PAUSED') return 'seen';
+  return 'like'; // watched but never scored
+}
+
+async function fetchList(src, username, status) {
+  if (src === 'anilist') {
+    const d = await gql(LIST, {u: username}).catch(e => {
+      throw new Error(/private|not found/i.test(e.message) ? 'AniList list not found or private.' : e.message);
+    });
+    return d.MediaListCollection.lists.flatMap(l => l.entries).map(e => ({m: e.media, score: e.score, status: e.status}));
+  }
+  const res = await fetch('/api/mal?user=' + encodeURIComponent(username));
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || 'Could not load that MyAnimeList list.');
+  // MAL ids -> AniList entries, 50 at a time
+  const byMal = new Map(j.items.map(i => [i.id, i])), ids = [...byMal.keys()], out = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    status(`Matching your MAL list with AniList… ${Math.min(i + 50, ids.length)}/${ids.length}`);
+    for (const m of (await gql(BY_MAL, {ids: ids.slice(i, i + 50)})).Page.media) {
+      const it = byMal.get(m.idMal);
+      if (it) out.push({m, score: it.score * 10, status: MAL_STATUS[it.status]});
+    }
+  }
+  return out;
+}
+
+function openImport() {
+  authBox.innerHTML = `<form><h2>Import your list</h2>
+    <div class="seg"><button type="button" data-s="anilist">AniList</button><button type="button" data-s="mal">MyAnimeList</button></div>
+    <input name="u" required placeholder="Username" autocomplete="username" maxlength="40">
+    <p>Your list has to be public. Plan-to-watch shows aren't imported, so they can still show up as matches.</p>
+    <button class="go" type="submit">Import</button>
+    <div class="msg"></div>
+    <button class="link" type="button" id="close">Cancel</button></form>`;
+  const form = authBox.querySelector('form'), msg = form.querySelector('.msg'), go = form.querySelector('.go');
+  const segs = form.querySelectorAll('.seg button');
+  const pick = s => { importSrc = s; segs.forEach(b => b.classList.toggle('on', b.dataset.s === s)); };
+  segs.forEach(b => b.onclick = () => pick(b.dataset.s));
+  pick(importSrc);
+  form.querySelector('#close').onclick = closeAuth;
+  const status = (t, cls = 'msg') => { msg.className = cls; msg.textContent = t; };
+  form.onsubmit = async e => {
+    e.preventDefault();
+    go.disabled = true; status('Loading your list…');
+    try {
+      const entries = await fetchList(importSrc, form.u.value.trim(), status);
+      const have = new Set(history.map(h => h.id)), added = [];
+      for (const {m, score, status: st} of entries) {
+        const a = toAction(score, st);
+        if (!a || have.has(m.id)) continue;
+        have.add(m.id);
+        added.push({id: m.id, a, f: features(m), t: title(m), c: m.coverImage.extraLarge});
+      }
+      if (user) {
+        status('Saving to your account…');
+        for (let i = 0; i < added.length; i += 500) {
+          const {error} = await sb.from('swipes').upsert(added.slice(i, i + 500).map(row), {onConflict: 'user_id,anime_id'});
+          if (error) throw error;
+        }
+      }
+      history.push(...added); save();
+      deck = []; renderDeck(); updateBadge();
+      if (matchesEl.classList.contains('on')) renderMatches();
+      const likes = added.filter(h => isLike(h.a)).length, nopes = added.filter(h => h.a === 'nope').length;
+      status(added.length
+        ? `Imported ${added.length} anime: ${likes} likes, ${nopes} passes, ${added.length - likes - nopes} watched.` +
+          (user ? '' : ' Log in to keep them on every device.')
+        : 'Nothing new to import. Everything on that list is already in your swipes.', 'msg ok');
+      go.textContent = 'Done'; go.disabled = false;
+      form.onsubmit = ev => { ev.preventDefault(); closeAuth(); };
+    } catch (err) {
+      console.error(err);
+      status(err.message || 'Import failed.', 'msg err'); go.disabled = false;
+    }
+  };
+  authEl.classList.add('on');
+  setTimeout(() => form.u.focus(), 50);
+}
+
+/* ---------- watch party ---------- */
+let party = null, partyName = '', partyPoll = null, joinCode = '';
+let partyMatchesSeen = new Set();
+const partyEl = document.getElementById('party');
+const memberId = (() => {
+  try {
+    let id = localStorage.getItem(STORE + ':member');
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem(STORE + ':member', id); }
+    return id;
+  } catch { return crypto.randomUUID(); }
+})();
+
+const partyMine = () => new Set(party.swipes.filter(s => s.member === memberId).map(s => s.anime_id));
+function partyMatches() {
+  if (!party || party.members.length < 2) return [];
+  const likes = new Map();
+  for (const s of party.swipes) if (isLike(s.action)) {
+    if (!likes.has(s.anime_id)) likes.set(s.anime_id, new Set());
+    likes.get(s.anime_id).add(s.member);
+  }
+  return party.deck.filter(id => party.members.every(p => likes.get(id)?.has(p.member)));
+}
+
+async function partyApi(body) {
+  const res = await fetch('/api/party', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({member: memberId, ...body})});
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || 'Party server error.');
+  return j;
+}
+
+async function enterParty(state, name) {
+  party = state; partyName = name;
+  try { localStorage.setItem(STORE + ':party', JSON.stringify({code: state.code, name})); } catch {}
+  partyMatchesSeen = new Set(partyMatches()); // only pop up matches that happen from now on
+  deck = [];
+  renderDeck(); renderParty(); updatePartyBadge();
+  await loadIds(party.deck).catch(console.error);
+  renderDeck();
+  clearInterval(partyPoll); partyPoll = setInterval(refreshParty, 3000);
+}
+function exitParty() {
+  if (party) partyApi({op: 'leave', code: party.code}).catch(() => {});
+  party = null; clearInterval(partyPoll);
+  try { localStorage.removeItem(STORE + ':party'); } catch {}
+  deck = []; renderDeck(); renderParty(); updatePartyBadge();
+}
+
+async function refreshParty() {
+  if (!party) return;
+  try {
+    const res = await fetch('/api/party?code=' + party.code);
+    if (res.status === 404) return exitParty();
+    if (!res.ok || !party) return;
+    const s = await res.json();
+    if (s.code !== party.code) return;
+    // keep my own swipes that the server hasn't confirmed yet
+    const key = x => x.member + ':' + x.anime_id, known = new Set(s.swipes.map(key));
+    s.swipes.push(...party.swipes.filter(x => x.member === memberId && !known.has(key(x))));
+    party = s;
+    checkPartyMatches(); renderPartyBar(); updatePartyBadge();
+    if (partyEl.classList.contains('on')) renderParty();
+  } catch {}
+}
+function checkPartyMatches() {
+  const fresh = partyMatches().filter(id => !partyMatchesSeen.has(id));
+  fresh.forEach(id => partyMatchesSeen.add(id));
+  const m = pool.get(fresh[0]);
+  if (m && !modal.classList.contains('on'))
+    matchModal(m, 'Everyone in your party liked…', party.members.map(p => p.name).join(' + '));
+}
+function partySwipe(id, action) {
+  party.swipes.push({member: memberId, anime_id: id, action});
+  checkPartyMatches(); renderPartyBar(); updatePartyBadge();
+  partyApi({op: 'swipe', code: party.code, anime: id, action}).catch(e => {
+    console.error(e);
+    if (/not in this party/i.test(e.message)) { alert(e.message); exitParty(); }
+  });
+}
+
+const partyBar = document.getElementById('partyBar');
+partyBar.onclick = () => switchView('party');
+function renderPartyBar() {
+  partyBar.hidden = !party;
+  if (party) {
+    const n = party.members.length, k = partyMatches().length;
+    partyBar.textContent = `🎉 Party ${party.code} · ${n} ${n === 1 ? 'person' : 'people'} · ${k} ${k === 1 ? 'match' : 'matches'}`;
+  }
+}
+function updatePartyBadge() {
+  const b = document.getElementById('pbadge'), n = party ? partyMatches().length : 0;
+  b.hidden = !n; b.textContent = n;
+}
+
+function renderParty() {
+  if (!party) {
+    const name = partyName || user?.email.split('@')[0] || '';
+    partyEl.innerHTML = `
+      <div class="card-box"><b style="font-size:20px">🎉 Watch party</b>
+        <p>Everyone swipes the same deck of popular anime on their own phone. When <b>everyone</b> likes the
+        same one, it's a match. That's what you're watching tonight. No account needed.</p>
+        <form id="pStart" class="fr"><input class="field" name="name" placeholder="Your name" maxlength="24" required value="${esc(name)}">
+          <button class="btn2">Start a party</button></form></div>
+      <div class="card-box"><b>Join a friend's party</b>
+        <form id="pJoin" class="fr">
+          <input class="field" name="code" placeholder="CODE" maxlength="5" required value="${esc(joinCode)}"
+            style="text-transform:uppercase;letter-spacing:3px;font-family:ui-monospace,Menlo,monospace">
+          <input class="field" name="name" placeholder="Your name" maxlength="24" required value="${esc(name)}">
+          <button class="btn2">Join</button></form></div>
+      <div class="err" id="pErr"></div>`;
+    const err = partyEl.querySelector('#pErr');
+    const run = async (form, fn) => {
+      const btn = form.querySelector('button'); btn.disabled = true; err.textContent = '';
+      try { await fn(); } catch (e) { err.textContent = e.message; } finally { btn.disabled = false; }
+    };
+    partyEl.querySelector('#pStart').onsubmit = e => {
+      e.preventDefault();
+      run(e.target, async () => {
+        // 60 popular first seasons, shuffled
+        const ids = [...pool.values()].filter(m => !m.sequel).slice(0, 150).map(m => m.id);
+        for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+        const name = e.target.name.value.trim();
+        await enterParty(await partyApi({op: 'create', name, deck: ids.slice(0, 60)}), name);
+      });
+    };
+    partyEl.querySelector('#pJoin').onsubmit = e => {
+      e.preventDefault();
+      run(e.target, async () => {
+        const name = e.target.name.value.trim(), code = e.target.code.value.trim().toUpperCase();
+        await enterParty(await partyApi({op: 'join', code, name}), name);
+        joinCode = ''; switchView('swipe');
+      });
+    };
+    return;
+  }
+  const total = party.deck.length, matches = partyMatches().map(id => pool.get(id)).filter(Boolean);
+  partyEl.innerHTML = `
+    <div class="card-box" style="text-align:center;justify-items:center">
+      <p>Party code: friends enter this in the Party tab</p>
+      <div class="pcode">${esc(party.code)}</div>
+      <div class="fr" style="justify-content:center">
+        <button class="btn2" id="pInvite">Share invite link</button>
+        <button class="btn2 alt" id="pSwipe">Swipe the deck</button></div>
+      <div class="ok" id="pMsg"></div></div>
+    <h3>People (${party.members.length})</h3>
+    <div class="card-box">${party.members.map(p => {
+      const done = party.swipes.filter(s => s.member === p.member).length;
+      return `<div class="member"><div class="av">${esc(p.name[0].toUpperCase())}</div>
+        <span>${esc(p.name)}${p.member === memberId ? ' (you)' : ''}</span>
+        <div class="bar"><i style="width:${Math.round(100 * done / total)}%"></i></div><small>${done}/${total}</small></div>`;
+    }).join('')}</div>
+    <h3>Matches (${matches.length})</h3>
+    ${matches.length ? `<div class="list">${matches.map(m => `<a class="row" href="${esc(m.siteUrl)}" target="_blank" rel="noopener">
+        <img src="${esc(m.coverImage.extraLarge)}" alt="" loading="lazy">
+        <div><div class="t">${esc(title(m))}</div>
+          <div class="s">${esc([m.seasonYear, fmt(m.format), m.genres.slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</div>
+          <div class="why">Everyone liked this</div></div></a>`).join('')}</div>`
+      : `<div class="card-box"><p>${party.members.length < 2 ? 'Invite at least one friend. Matches need two people.'
+          : 'No matches yet. Keep swiping!'}</p></div>`}
+    <button class="reset" id="pLeave">Leave party</button>`;
+  partyEl.querySelector('#pSwipe').onclick = () => switchView('swipe');
+  partyEl.querySelector('#pLeave').onclick = () => { if (confirm('Leave this party?')) exitParty(); };
+  partyEl.querySelector('#pInvite').onclick = async () => {
+    const url = `${location.origin}/?party=${party.code}`, msg = partyEl.querySelector('#pMsg');
+    try {
+      if (navigator.share) await navigator.share({title: 'AniMatch watch party', text: `Join my AniMatch party: ${party.code}`, url});
+      else { await navigator.clipboard.writeText(url); msg.textContent = 'Invite link copied!'; }
+    } catch { msg.textContent = url; }
+  };
+}
+
+/* ---------- boot ---------- */
+(async () => {
+  joinCode = (new URLSearchParams(location.search).get('party') || '').toUpperCase().slice(0, 5);
+  if (joinCode) window.history.replaceState(null, '', location.pathname + location.hash);
+  load(); updateBadge();
+  await Promise.all([fetchPage(), initAuth()]);
+  if (!pool.size) return;
+  renderDeck();
+  ensurePool();
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORE + ':party')); } catch {}
+  if (joinCode && joinCode !== saved?.code) switchView('party');
+  else if (saved) partyApi({op: 'join', code: saved.code, name: saved.name})
+    .then(s => enterParty(s, saved.name))
+    .catch(() => { try { localStorage.removeItem(STORE + ':party'); } catch {} });
+})();
+</script>
+</body>
+</html>
