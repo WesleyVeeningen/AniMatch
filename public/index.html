@@ -171,6 +171,7 @@ main{flex:1;position:relative;min-height:0}
 <div id="modal"></div>
 <div id="auth"><div class="box"></div></div>
 
+<script src="recommender.js"></script>
 <script>
 const API = 'https://graphql.anilist.co';
 const FIELDS = `id idMal title{romaji english} coverImage{extraLarge color} genres
@@ -183,8 +184,6 @@ const BY_ID = `query($ids:[Int]){Page(perPage:50){media(id_in:$ids,type:ANIME){$
 const BY_MAL = `query($ids:[Int]){Page(perPage:50){media(idMal_in:$ids,type:ANIME){${LIGHT}}}}`;
 const LIST = `query($u:String){MediaListCollection(userName:$u,type:ANIME){lists{entries{
   status score(format:POINT_100) media{${LIGHT}}}}}}`;
-// 'seen' = imported from a list as watched but rated middling
-const WEIGHT = {like: 1, super: 2, nope: -0.7, seen: 0.2};
 const isLike = a => a === 'like' || a === 'super';
 const MAX_PAGES = 30;            // up to 1,500 of the most popular titles
 const STORE = 'animatch-v1';
@@ -195,6 +194,7 @@ let deck = [];                   // ids, deck[0] is the top card
 let page = 0, hasNext = true, fetching = false;
 let likesSinceMatch = 0, shownMatches = new Set();
 let sb = null, user = null;      // Supabase client + signed-in user (null = guest)
+let cfModel = null;              // collaborative filtering links; the app works on content alone without them
 
 /* ---------- persistence ---------- */
 // Guests keep swipes in this browser; signed-in users keep them in Supabase.
@@ -274,23 +274,23 @@ function features(m) {
 const seen = () => new Set(history.map(h => h.id));
 const unseen = () => { const s = seen(); return [...pool.values()].filter(m => !m.sequel && !s.has(m.id)); };
 
-function prefs() {
-  const p = {};
-  for (const h of history) for (const k in h.f) p[k] = (p[k] || 0) + WEIGHT[h.a] * h.f[k];
-  const n = Math.max(1, history.length);
-  for (const k in p) p[k] /= n;
-  return p;
-}
-function score(m, p) {
-  let dot = 0, norm = 0;
-  for (const k in m.f) { dot += (p[k] || 0) * m.f[k]; norm += m.f[k] ** 2; }
-  const quality = ((m.averageScore || 65) - 70) / 30;
-  return dot / Math.sqrt(norm || 1) + 0.08 * quality;
-}
-const pct = s => Math.max(1, Math.min(99, Math.round(50 + 50 * Math.tanh(s * 1.6))));
+const prefs = () => buildPrefs(history, [...pool.values()], cfModel);
+const score = (m, p) => hybridScore(m.id, m.f, m.averageScore, p);
+const pct = s => Math.max(1, Math.min(99, Math.round(50 + 50 * Math.tanh(s * 0.3))));
 function why(m, p) {
-  return Object.keys(m.f).map(k => [k, (p[k] || 0) * m.f[k]]).filter(x => x[1] > 0)
+  return Object.keys(m.f).map(k => [k, (p.tags[k] || 0) * m.f[k]]).filter(x => x[1] > 0)
     .sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0].slice(2));
+}
+// "Because you liked X" when a swipe drove the pick, otherwise the shared genres and tags
+function reason(m, p) {
+  const h = becauseOf(m.id, history, p), w = why(m, p);
+  return h ? `Because you liked ${h.t}` : w.length ? `Because you like ${w.join(', ')}` : '';
+}
+async function loadCF() {
+  try {
+    const r = await fetch('cf-model.json');
+    if (r.ok) cfModel = indexCF(await r.json());
+  } catch (e) { console.error(e); }
 }
 function ranked() {
   const p = prefs();
@@ -311,7 +311,7 @@ function pickNext() {
     return popular[Math.floor(Math.random() * popular.length)].id;
   }
   const p = prefs();
-  const top = cands.map(m => ({id: m.id, s: score(m, p) + Math.random() * 0.15}))
+  const top = cands.map(m => ({id: m.id, s: score(m, p) + Math.random() * 0.3}))
     .sort((a, b) => b.s - a.s).slice(0, 6);
   return top[Math.floor(Math.random() * top.length)].id;
 }
@@ -475,9 +475,9 @@ function showMatch() {
   if (!best) return;
   const m = best.m;
   shownMatches.add(m.id); save();
-  const reasons = why(m, p);
+  const because = reason(m, p);
   matchModal(m, `Based on your ${history.filter(h => isLike(h.a)).length} likes, you'd love…`,
-    `${pct(best.s)}% match${reasons.length ? ' · you like ' + reasons.join(', ') : ''}`);
+    `${pct(best.s)}% match${because ? ' · ' + because : ''}`);
 }
 function matchModal(m, lead, detail) {
   modal.innerHTML = `<div class="big">It's a Match!</div>
@@ -507,7 +507,7 @@ function renderMatches() {
     return;
   }
   const p = prefs();
-  const prefList = Object.entries(p).sort((a, b) => b[1] - a[1]);
+  const prefList = Object.entries(p.tags).sort((a, b) => b[1] - a[1]);
   const loves = prefList.filter(x => x[1] > 0).slice(0, 8);
   const hates = prefList.filter(x => x[1] < 0).slice(-5).reverse();
   const top = ranked().slice(0, 25);
@@ -517,13 +517,13 @@ function renderMatches() {
       ${hates.map(x => `<span class="chip neg">✕ ${esc(x[0].slice(2))}</span>`).join('')}</div>
     <h3>Best matches for you</h3>
     <div class="list">${top.map((r, i) => {
-      const m = r.m, w = why(m, p);
+      const m = r.m, because = reason(m, p);
       return `<a class="row" href="${esc(m.siteUrl)}" target="_blank" rel="noopener">
         <div class="rank">${i + 1}</div>
         <img src="${esc(m.coverImage.extraLarge)}" alt="" loading="lazy">
         <div><div class="t">${esc(title(m))}</div>
           <div class="s">${esc([m.seasonYear, fmt(m.format), m.genres.slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</div>
-          ${w.length ? `<div class="why">Because you like ${esc(w.join(', '))}</div>` : ''}</div>
+          ${because ? `<div class="why">${esc(because)}</div>` : ''}</div>
         <div class="pct">${pct(r.s)}%</div></a>`;
     }).join('')}</div>
     <h3>You liked (${liked.length})</h3>
@@ -916,7 +916,7 @@ function renderParty() {
   joinCode = (new URLSearchParams(location.search).get('party') || '').toUpperCase().slice(0, 5);
   if (joinCode) window.history.replaceState(null, '', location.pathname + location.hash);
   load(); updateBadge();
-  await Promise.all([fetchPage(), initAuth()]);
+  await Promise.all([fetchPage(), initAuth(), loadCF()]);
   if (!pool.size) return;
   renderDeck();
   ensurePool();
