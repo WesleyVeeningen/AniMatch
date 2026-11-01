@@ -4,7 +4,7 @@ AniMatch used to rank anime by genre and tag overlap with your swipes. This fold
 that with a hybrid recommender and measures whether it is actually better.
 
 **Result:** after 20 swipes, NDCG@10 rose from 0.262 to 0.705 and like-vs-dislike AUC from
-0.599 to 0.726, on 10,000 users the model never saw. The model is 150 KB gzipped and runs in
+0.599 to 0.726, on 10,000 users the model never saw. The model is about 165 KB compressed and runs in
 the browser, with no server and no retraining per user.
 
 ![Accuracy by number of swipes](results/accuracy.png)
@@ -51,7 +51,7 @@ strong (λ = 100,000), which suits profiles this small.
 ## Decisions
 
 - **Model size.** Full EASE is a 981 × 981 matrix. Keeping each title's 100 strongest links and
-  rounding them to 8 bits costs 0.006 NDCG and takes the file to 568 KB, or 150 KB gzipped.
+  rounding them to 8 bits costs 0.006 NDCG and takes the file to 568 KB, or about 165 KB compressed.
   Doubling the links gained little on validation users, while 30 links cost visibly more AUC.
 - **New titles.** The ratings end around 2020, so 354 of the 1,129 titles in the deck have no CF
   data, and a plain CF model would never recommend them. To see what the fix costs, CF was
