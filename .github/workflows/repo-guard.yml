@@ -52,7 +52,25 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/dependency-review-action@v5
+        with:
+          fetch-depth: 0
+      # Public repos: GitHub's dependency review
+      - if: ${{ !github.event.repository.private }}
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
           comment-summary-in-pr: never
+      # Private repos (no GitHub Advanced Security): compare osv-scanner results PR vs base
+      - if: ${{ github.event.repository.private }}
+        name: osv-scanner (new vulnerabilities only)
+        run: |
+          curl -sSL -o osv https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 && chmod +x osv
+          scan() { ./osv scan source -r --format json "$1" 2>/dev/null | jq -r '[.results[]?.packages[]? | .package.name as $n | .vulnerabilities[]? | "\($n) \(.id)"] | unique[]' || true; }
+          git worktree add -q ../base "origin/${{ github.base_ref }}"
+          scan ../base | sort > base.txt
+          scan . | sort > head.txt
+          new=$(comm -13 base.txt head.txt)
+          if [ -n "$new" ]; then
+            echo "::error::This PR adds vulnerable dependencies:"; echo "$new"; exit 1
+          fi
+          echo "OK: no new vulnerable dependencies ($(wc -l < head.txt) known ones already on ${{ github.base_ref }})."
