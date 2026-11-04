@@ -1,0 +1,76 @@
+# Added by repo-guard: security checks on every pull request.
+name: repo-guard checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: No leaked secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Scan the PR's commits with gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar xz gitleaks
+          if [ -n "${{ github.base_ref }}" ]; then
+            ./gitleaks git --redact --no-banner --log-opts="origin/${{ github.base_ref }}..HEAD" .
+          else
+            ./gitleaks git --redact --no-banner .
+          fi
+
+  files:
+    name: No sensitive or generated files
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Block .env, keys, node_modules and venv in the PR
+        run: |
+          added=$(git diff --name-only --diff-filter=A "origin/${{ github.base_ref }}...HEAD")
+          bad=$(printf '%s\n' "$added" | grep -E '(^|/)\.env(\.[A-Za-z0-9_-]+)?$|\.pem$|\.key$|\.p12$|\.pfx$|(^|/)id_(rsa|ed25519|ecdsa)$|(^|/)credentials\.json$|(^|/)node_modules/|(^|/)\.?venv/' \
+                | grep -vE '\.env\.(example|sample|template|dist|mock|test)$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::This PR adds files that should not be in git:"
+            printf '%s\n' "$bad" | head -50
+            echo "Remove them (git rm --cached <file>) and add them to .gitignore."
+            exit 1
+          fi
+          echo "OK: no sensitive or generated files added."
+
+  dependencies:
+    name: No new vulnerable dependencies
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Public repos: GitHub's dependency review
+      - if: ${{ !github.event.repository.private }}
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: never
+      # Private repos (no GitHub Advanced Security): compare osv-scanner results PR vs base
+      - if: ${{ github.event.repository.private }}
+        name: osv-scanner (new vulnerabilities only)
+        run: |
+          curl -sSL -o osv https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 && chmod +x osv
+          scan() { ./osv scan source -r --format json "$1" 2>/dev/null | jq -r '[.results[]?.packages[]? | .package.name as $n | .vulnerabilities[]? | "\($n) \(.id)"] | unique[]' || true; }
+          git worktree add -q ../base "origin/${{ github.base_ref }}"
+          scan ../base | sort > base.txt
+          scan . | sort > head.txt
+          new=$(comm -13 base.txt head.txt)
+          if [ -n "$new" ]; then
+            echo "::error::This PR adds vulnerable dependencies:"; echo "$new"; exit 1
+          fi
+          echo "OK: no new vulnerable dependencies ($(wc -l < head.txt) known ones already on ${{ github.base_ref }})."
